@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import inspect
+from collections.abc import Callable, Mapping
+from typing import cast
 
 from langchain.chat_models import init_chat_model
 from langchain_core.language_models import LanguageModelLike
@@ -18,6 +20,8 @@ from .tools import MCPToolLoader
 
 # Model can be a provider string (handled by LangChain), a chat model instance, or a Runnable.
 ModelLike = str | BaseChatModel | LanguageModelLike
+AgentRunnable = Runnable[dict[str, object], dict[str, object]]
+ReactAgentFactory = Callable[..., AgentRunnable]
 
 
 def _normalize_model(model: ModelLike) -> LanguageModelLike:
@@ -33,6 +37,19 @@ def _normalize_model(model: ModelLike) -> LanguageModelLike:
         # This supports many providers via lc init strings, not just OpenAI.
         return init_chat_model(model)
     return model  # Already BaseChatModel or Runnable
+
+
+def _create_react_agent(
+    *, model: LanguageModelLike, tools: list[BaseTool], system_prompt: str
+) -> AgentRunnable:
+    """Build a ReAct agent across LangGraph's public prompt API generations."""
+    prompt_parameter = (
+        "prompt"
+        if "prompt" in inspect.signature(create_react_agent).parameters
+        else "state_modifier"
+    )
+    factory = cast(ReactAgentFactory, create_react_agent)
+    return factory(model=model, tools=tools, **{prompt_parameter: system_prompt})
 
 
 async def build_deep_agent(
@@ -74,6 +91,6 @@ async def build_deep_agent(
         graph = create_deep_agent(tools=tools, instructions=sys_prompt, model=chat)
     except ImportError:
         # Solid fallback with LangGraph's ReAct agent.
-        graph = create_react_agent(model=chat, tools=tools, state_modifier=sys_prompt)
+        graph = _create_react_agent(model=chat, tools=tools, system_prompt=sys_prompt)
 
     return graph, loader
