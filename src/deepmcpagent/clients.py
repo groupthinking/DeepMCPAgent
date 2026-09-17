@@ -3,14 +3,34 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING
+from types import TracebackType
+from typing import Protocol
 
 from fastmcp import Client as FastMCPClient
+from mcp.types import Tool
 
 from .config import ServerSpec, servers_to_mcp_config
 
-if TYPE_CHECKING:
-    from fastmcp.client.transports.config import MCPConfigTransport
+
+class MCPClient(Protocol):
+    """Client operations exposed by this package across supported FastMCP versions."""
+
+    async def __aenter__(self) -> MCPClient: ...
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None: ...
+
+    async def list_tools(self) -> list[Tool]: ...
+
+    async def call_tool(
+        self,
+        name: str,
+        arguments: dict[str, object] | None = None,
+    ) -> object: ...
 
 
 class FastMCPMulti:
@@ -28,6 +48,6 @@ class FastMCPMulti:
         self._client = FastMCPClient(mcp_cfg)
 
     @property
-    def client(self) -> FastMCPClient[MCPConfigTransport]:
+    def client(self) -> MCPClient:
         """Return the underlying FastMCP client instance."""
         return self._client
