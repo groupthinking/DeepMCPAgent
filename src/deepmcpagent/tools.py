@@ -83,7 +83,7 @@ class _FastMCPTool(BaseTool):
         """Synchronous execution path (rarely used)."""
         import anyio
 
-        return anyio.run(self._arun, **kwargs)
+        return anyio.run(lambda: self._arun(**kwargs))
 
 
 class MCPToolLoader:
