@@ -8,12 +8,15 @@ Now with fancy console output:
 """
 
 import asyncio
+
 from dotenv import load_dotenv
-from deepmcpagent import HTTPServerSpec, build_deep_agent
 from langchain_openai import ChatOpenAI
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+
+# isort: split
+from deepmcpagent import HTTPServerSpec, build_deep_agent
 
 
 async def main() -> None:
