@@ -143,19 +143,19 @@ asyncio.run(main())
 ```bash
 # list tools from one or more HTTP servers
 deepmcpagent list-tools \
-  --http name=math url=http://127.0.0.1:8000/mcp transport=http \
+  --http 'name=math url=http://127.0.0.1:8000/mcp transport=http' \
   --model-id "openai:gpt-4.1"
 
 # interactive agent chat (HTTP/SSE servers only)
 deepmcpagent run \
-  --http name=math url=http://127.0.0.1:8000/mcp transport=http \
+  --http 'name=math url=http://127.0.0.1:8000/mcp transport=http' \
   --model-id "openai:gpt-4.1"
 ```
 
-> The CLI accepts **repeated** `--http` blocks; add `header.X=Y` pairs for auth:
+> Each repeatable `--http` or `--stdio` occurrence consumes **one shell-quoted value**; add `header.X=Y` pairs for auth:
 >
 > ```
-> --http name=ext url=https://api.example.com/mcp transport=http header.Authorization="Bearer TOKEN"
+> --http 'name=ext url=https://api.example.com/mcp transport=http header.Authorization="Bearer TOKEN"'
 > ```
 
 ---
