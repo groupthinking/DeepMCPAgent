@@ -5,8 +5,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Protocol, cast, get_type_hints, runtime_checkable
 
-from fastmcp import Client
-
 from deepmcpagent.clients import FastMCPMulti, MCPClient
 from deepmcpagent.config import HTTPServerSpec
 
@@ -37,6 +35,8 @@ class _RemoteServer(Protocol):
 
 def test_client_property_exposes_mcp_config_transport_without_connecting() -> None:
     """Construct and inspect the public client property without network access."""
+    from fastmcp import Client
+
     multi = FastMCPMulti(
         {"local": HTTPServerSpec(url="http://127.0.0.1:9/mcp")},
     )
