@@ -9,79 +9,155 @@ Notes:
 from __future__ import annotations
 
 import asyncio
-from typing import Dict, List
+import json
+from typing import Annotated, Literal, cast
 
 import typer
+from click import Context
 from rich.console import Console
 from rich.table import Table
+from typer.core import TyperCommand
 
 from .agent import build_deep_agent
 from .config import HTTPServerSpec, ServerSpec, StdioServerSpec
+
+_SERVER_OPTIONS = {"--http", "--stdio"}
+_HTTP_TRANSPORTS = ("http", "streamable-http", "sse")
+_HTTPTransport = Literal["http", "streamable-http", "sse"]
+
+
+class _ServerBlockCommand(TyperCommand):
+    """Make documented multi-token server blocks consumable by Click."""
+
+    def parse_args(self, ctx: Context, args: list[str]) -> list[str]:
+        encoded_args: list[str] = []
+        index = 0
+        while index < len(args):
+            option = args[index]
+            if option not in _SERVER_OPTIONS:
+                encoded_args.append(option)
+                index += 1
+                continue
+
+            block: list[str] = []
+            index += 1
+            while index < len(args) and not args[index].startswith("--"):
+                block.append(args[index])
+                index += 1
+            encoded_args.extend((option, json.dumps(block)))
+
+        return super().parse_args(ctx, encoded_args)
+
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 console = Console()
 
 
-def _parse_kv(opts: List[str]) -> Dict[str, str]:
-    out: Dict[str, str] = {}
-    for it in opts:
-        if "=" not in it:
-            raise typer.BadParameter(f"Expected key=value, got: {it}")
-        k, v = it.split("=", 1)
-        out[k.strip()] = v.strip()
+def _parse_kv(opts: list[str]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for item in opts:
+        if "=" not in item:
+            raise typer.BadParameter(f"Expected key=value, got: {item}")
+        key, value = item.split("=", 1)
+        key = key.strip()
+        if not key:
+            raise typer.BadParameter(f"Expected key=value, got: {item}")
+        out[key] = value.strip()
     return out
 
 
-def _merge_servers(stdios: List[List[str]], https: List[List[str]]) -> Dict[str, ServerSpec]:
-    servers: Dict[str, ServerSpec] = {}
+def _decode_blocks(encoded_blocks: list[str]) -> list[list[str]]:
+    blocks: list[list[str]] = []
+    for encoded in encoded_blocks:
+        block: object = json.loads(encoded)
+        if not isinstance(block, list) or not all(isinstance(item, str) for item in block):
+            raise typer.BadParameter("Server options must contain key=value pairs")
+        blocks.append(cast(list[str], block))
+    return blocks
+
+
+def _required(kv: dict[str, str], key: str, option: str) -> str:
+    try:
+        return kv.pop(key)
+    except KeyError:
+        raise typer.BadParameter(f"{option} requires {key}=...") from None
+
+
+def _parse_transport(value: str) -> _HTTPTransport:
+    if value not in _HTTP_TRANSPORTS:
+        raise typer.BadParameter(
+            f"Invalid transport {value!r}; expected http, streamable-http, or sse"
+        )
+    return cast(_HTTPTransport, value)
+
+
+def _merge_servers(stdios: list[list[str]], https: list[list[str]]) -> dict[str, ServerSpec]:
+    servers: dict[str, ServerSpec] = {}
 
     # Keep stdio parsing for completeness (see note in StdioServerSpec docstring).
     for block in stdios:
         kv = _parse_kv(block)
-        name = kv.pop("name")
+        name = _required(kv, "name", "--stdio")
         args = kv.pop("args", "")
-        spec = StdioServerSpec(
-            command=kv.pop("command"),
-            args=[x for x in args.split(" ") if x] if args else [],
-            env={k.split(".", 1)[1]: v for k, v in kv.items() if k.startswith("env.")},
+        stdio_spec = StdioServerSpec(
+            command=_required(kv, "command", "--stdio"),
+            args=[item for item in args.split(" ") if item] if args else [],
+            env={
+                key.split(".", 1)[1]: value for key, value in kv.items() if key.startswith("env.")
+            },
             cwd=kv.get("cwd"),
             keep_alive=(kv.get("keep_alive", "true").lower() != "false"),
         )
-        servers[name] = spec
+        servers[name] = stdio_spec
 
     for block in https:
         kv = _parse_kv(block)
-        name = kv.pop("name")
-        headers = {k.split(".", 1)[1]: v for k, v in kv.items() if k.startswith("header.")}
-        spec = HTTPServerSpec(
-            url=kv.pop("url"),
-            transport=kv.pop("transport", "http"),  # "http", "streamable-http", or "sse"
+        name = _required(kv, "name", "--http")
+        headers = {
+            key.split(".", 1)[1]: value for key, value in kv.items() if key.startswith("header.")
+        }
+        http_spec = HTTPServerSpec(
+            url=_required(kv, "url", "--http"),
+            transport=_parse_transport(kv.pop("transport", "http")),
             headers=headers,
             auth=kv.get("auth"),
         )
-        servers[name] = spec
+        servers[name] = http_spec
 
     return servers
 
 
-@app.command()
+@app.command(cls=_ServerBlockCommand)
 def list_tools(
-    stdio: List[List[str]] = typer.Option(None, "--stdio", help="Block: name=... command=... args='...'", multiple=True),
-    http: List[List[str]] = typer.Option(
-        None, "--http", help="Block: name=... url=... [transport=http|streamable-http|sse] [header.X=Y]", multiple=True
-    ),
-    model_id: str = typer.Option(
-        ...,
-        "--model-id",
-        help="REQUIRED model provider id string (e.g., 'openai:gpt-4.1', 'anthropic:claude-3-opus').",
-    ),
-    instructions: str = typer.Option("", "--instructions", help="Optional system prompt override."),
-):
+    model_id: Annotated[
+        str,
+        typer.Option(
+            "--model-id",
+            help="REQUIRED model provider id string (e.g., 'openai:gpt-4.1', "
+            "'anthropic:claude-3-opus').",
+        ),
+    ],
+    stdio: Annotated[
+        list[str] | None,
+        typer.Option("--stdio", help="Block: name=... command=... args='...'"),
+    ] = None,
+    http: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--http",
+            help="Block: name=... url=... [transport=http|streamable-http|sse] [header.X=Y]",
+        ),
+    ] = None,
+    instructions: Annotated[
+        str,
+        typer.Option("--instructions", help="Optional system prompt override."),
+    ] = "",
+) -> None:
     """List all MCP tools discovered using the provided server specs."""
-    servers = _merge_servers(stdio or [], http or [])
+    servers = _merge_servers(_decode_blocks(stdio or []), _decode_blocks(http or []))
 
-    async def _run():
-        graph, loader = await build_deep_agent(
+    async def _run() -> None:
+        _graph, loader = await build_deep_agent(
             servers=servers,
             model=model_id,
             instructions=instructions or None,
@@ -91,33 +167,44 @@ def list_tools(
         table.add_column("Tool")
         table.add_column("Description")
         table.add_column("Input Schema")
-        import json as _json
-
-        for i in infos:
-            table.add_row(i.name, i.description or "-", _json.dumps(i.input_schema))
+        for info in infos:
+            table.add_row(info.name, info.description or "-", json.dumps(info.input_schema))
         console.print(table)
 
     asyncio.run(_run())
 
 
-@app.command()
+@app.command(cls=_ServerBlockCommand)
 def run(
-    stdio: List[List[str]] = typer.Option(None, "--stdio", help="Block: name=... command=... args='...'", multiple=True),
-    http: List[List[str]] = typer.Option(
-        None, "--http", help="Block: name=... url=... [transport=http|streamable-http|sse] [header.X=Y]", multiple=True
-    ),
-    model_id: str = typer.Option(
-        ...,
-        "--model-id",
-        help="REQUIRED model provider id string (e.g., 'openai:gpt-4.1', 'anthropic:claude-3-opus').",
-    ),
-    instructions: str = typer.Option("", "--instructions", help="Optional system prompt override."),
-):
+    model_id: Annotated[
+        str,
+        typer.Option(
+            "--model-id",
+            help="REQUIRED model provider id string (e.g., 'openai:gpt-4.1', "
+            "'anthropic:claude-3-opus').",
+        ),
+    ],
+    stdio: Annotated[
+        list[str] | None,
+        typer.Option("--stdio", help="Block: name=... command=... args='...'"),
+    ] = None,
+    http: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--http",
+            help="Block: name=... url=... [transport=http|streamable-http|sse] [header.X=Y]",
+        ),
+    ] = None,
+    instructions: Annotated[
+        str,
+        typer.Option("--instructions", help="Optional system prompt override."),
+    ] = "",
+) -> None:
     """Start an interactive agent that uses only MCP tools."""
-    servers = _merge_servers(stdio or [], http or [])
+    servers = _merge_servers(_decode_blocks(stdio or []), _decode_blocks(http or []))
 
-    async def _chat():
-        graph, _ = await build_deep_agent(
+    async def _chat() -> None:
+        graph, _loader = await build_deep_agent(
             servers=servers,
             model=model_id,
             instructions=instructions or None,
