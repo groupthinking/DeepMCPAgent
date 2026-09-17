@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0
+## 0.3.0
 - Initial public release
 - FastMCP HTTP/SSE support
 - MCP tool discovery → Pydantic → LangChain `BaseTool`
