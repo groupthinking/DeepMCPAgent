@@ -52,6 +52,22 @@ def test_streamable_http_server_conversion_preserves_transport() -> None:
     }
 
 
+# Mutation caught: changing stdio defaults or serializing an empty env as {}.
+def test_stdio_server_conversion_uses_minimal_defaults() -> None:
+    server = StdioServerSpec(command="python")
+
+    assert servers_to_mcp_config({"local": server}) == {
+        "local": {
+            "transport": "stdio",
+            "command": "python",
+            "args": [],
+            "env": None,
+            "cwd": None,
+            "keep_alive": True,
+        }
+    }
+
+
 # Mutation caught: omitting stdio env, cwd, args, or a false keep_alive value.
 def test_stdio_server_conversion_preserves_process_configuration() -> None:
     server = StdioServerSpec(

@@ -46,6 +46,38 @@ def test_required_primitive_properties_have_literal_types_and_no_defaults() -> N
     ).model_dump() == {"label": "fixed", "count": 7, "ratio": 2.5, "enabled": True}
 
 
+# Mutation caught: making a required array or object property optional.
+def test_required_collection_properties_have_literal_types_and_no_defaults() -> None:
+    model = _jsonschema_to_pydantic(
+        {
+            "type": "object",
+            "properties": {
+                "tags": {"type": "array"},
+                "metadata": {"type": "object"},
+            },
+            "required": ["tags", "metadata"],
+        }
+    )
+
+    assert {name: field.annotation for name, field in model.model_fields.items()} == {
+        "tags": list,
+        "metadata": dict,
+    }
+    assert {name: field.is_required() for name, field in model.model_fields.items()} == {
+        "tags": True,
+        "metadata": True,
+    }
+    with pytest.raises(ValidationError) as exc_info:
+        model.model_validate({})
+    assert [error["loc"] for error in exc_info.value.errors()] == [("tags",), ("metadata",)]
+    assert model.model_validate(
+        {"tags": ["alpha", "beta"], "metadata": {"source": "unit-test"}}
+    ).model_dump() == {
+        "tags": ["alpha", "beta"],
+        "metadata": {"source": "unit-test"},
+    }
+
+
 # Mutation caught: requiring optional schema properties or swapping primitive/collection mappings.
 def test_optional_supported_properties_default_to_none_with_literal_types() -> None:
     model = _jsonschema_to_pydantic(
