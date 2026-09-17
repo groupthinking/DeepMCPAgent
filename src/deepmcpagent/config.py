@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Literal, Mapping, Union
+from collections.abc import Mapping
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -30,8 +31,8 @@ class StdioServerSpec(_BaseServer):
     """
 
     command: str
-    args: List[str] = Field(default_factory=list)
-    env: Dict[str, str] = Field(default_factory=dict)
+    args: list[str] = Field(default_factory=list)
+    env: dict[str, str] = Field(default_factory=dict)
     cwd: str | None = None
     keep_alive: bool = True
 
@@ -48,15 +49,15 @@ class HTTPServerSpec(_BaseServer):
 
     url: str
     transport: Literal["http", "streamable-http", "sse"] = "http"
-    headers: Dict[str, str] = Field(default_factory=dict)
+    headers: dict[str, str] = Field(default_factory=dict)
     auth: str | None = None
 
 
-ServerSpec = Union[StdioServerSpec, HTTPServerSpec]
+ServerSpec = StdioServerSpec | HTTPServerSpec
 """Union of supported server specifications."""
 
 
-def servers_to_mcp_config(servers: Mapping[str, ServerSpec]) -> Dict[str, Dict[str, object]]:
+def servers_to_mcp_config(servers: Mapping[str, ServerSpec]) -> dict[str, dict[str, object]]:
     """Convert programmatic server specs to the FastMCP configuration dict.
 
     Args:
@@ -65,7 +66,7 @@ def servers_to_mcp_config(servers: Mapping[str, ServerSpec]) -> Dict[str, Dict[s
     Returns:
         Dict suitable for initializing `fastmcp.Client({"mcpServers": ...})`.
     """
-    cfg: Dict[str, Dict[str, object]] = {}
+    cfg: dict[str, dict[str, object]] = {}
     for name, s in servers.items():
         if isinstance(s, StdioServerSpec):
             cfg[name] = {
@@ -77,7 +78,7 @@ def servers_to_mcp_config(servers: Mapping[str, ServerSpec]) -> Dict[str, Dict[s
                 "keep_alive": s.keep_alive,
             }
         else:
-            entry: Dict[str, object] = {
+            entry: dict[str, object] = {
                 "transport": s.transport,
                 "url": s.url,
             }
