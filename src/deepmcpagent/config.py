@@ -4,14 +4,13 @@ from __future__ import annotations
 
 from typing import Dict, List, Literal, Mapping, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class _BaseServer(BaseModel):
     """Base model for server specs."""
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class StdioServerSpec(_BaseServer):
