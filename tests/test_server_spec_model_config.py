@@ -3,6 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
+# isort: split
 from deepmcpagent.config import HTTPServerSpec, StdioServerSpec
 
 
