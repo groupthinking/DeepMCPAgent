@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Mapping
+from collections.abc import Mapping
+from typing import TYPE_CHECKING
 
 from fastmcp import Client as FastMCPClient
 
 from .config import ServerSpec, servers_to_mcp_config
+
+if TYPE_CHECKING:
+    from fastmcp.client.transports.config import MCPConfigTransport
 
 
 class FastMCPMulti:
@@ -24,6 +28,6 @@ class FastMCPMulti:
         self._client = FastMCPClient(mcp_cfg)
 
     @property
-    def client(self) -> FastMCPClient:
+    def client(self) -> FastMCPClient[MCPConfigTransport]:
         """Return the underlying FastMCP client instance."""
         return self._client
